@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go/game_screen.dart';
+import 'package:go/engine/go_engine.dart';
 
 void main() {
   group('GoEngine captures', () {
