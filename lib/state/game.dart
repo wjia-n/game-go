@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -22,12 +23,23 @@ class _Snap {
 }
 
 /// Full game session: rules state, bot scheduling, scoring, save/resume.
+///
+/// ENGINE-OWNED TURN STATE: the session owns every turn phase ([turnPhase])
+/// and settles bot moves on its own timers — UI widgets only read. A
+/// periodic [watchdog] re-arms any bot phase found without a live timer, so
+/// stuck states are impossible by construction.
+///
 /// The goban painter and screens only read; all mutation goes through here.
 class GameState extends ChangeNotifier {
   final GoSettings settings;
   final SoundService sound;
 
-  GameState({required this.settings, required this.sound});
+  GameState({required this.settings, required this.sound}) {
+    // Watchdog: every 2s verify the turn state is live; recover if not.
+    _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
+      _watchdogTick();
+    });
+  }
 
   // ---- config ----
   int size = 9;
@@ -47,8 +59,15 @@ class GameState extends ChangeNotifier {
   Set<String> seenHashes = {};
   final List<_Snap> _undos = [];
   GamePhase phase = GamePhase.play;
+
+  /// Engine-owned turn sub-state (never driven by UI timers).
+  TurnPhase turnPhase = TurnPhase.idle;
+
   Set<int> dead = {};
   AreaScore? pendingScore;
+
+  // ---- narration: what just happened, for the per-side trays ----
+  String narration = '';
 
   // ---- result ----
   bool over = false;
@@ -60,12 +79,33 @@ class GameState extends ChangeNotifier {
   int _gen = 0;
   late Random _botRng;
 
+  // ---- watchdog ----
+  Timer? _watchdog;
+  DateTime? _botDeadline;
+  bool _disposed = false;
+
+  /// How many times the watchdog recovered a stuck-looking turn phase.
+  /// Normally 0; surfaced in diagnostics.
+  int watchdogTrips = 0;
+
   int get humanColor =>
       mode == GameMode.vsBot ? 3 - botColor : 0; // 0 = both human
   bool get isHumanTurn =>
       mode == GameMode.twoPlayer || turn != botColor || phase != GamePhase.play;
   bool get canUndo =>
       !over && _undos.isNotEmpty && phase != GamePhase.done;
+
+  /// Renameable display name for a color slot (persisted in settings).
+  String nameFor(int color) {
+    if (mode == GameMode.vsBot) {
+      return color == botColor ? settings.botName : settings.humanName;
+    }
+    return color == 1 ? settings.p1Name : settings.p2Name;
+  }
+
+  void _narrate(String s) {
+    narration = s;
+  }
 
   // ================= setup =================
 
@@ -97,6 +137,7 @@ class GameState extends ChangeNotifier {
     seenHashes = {hashes.first};
     _undos.clear();
     phase = GamePhase.play;
+    turnPhase = TurnPhase.awaitingHuman;
     dead = {};
     pendingScore = null;
     over = false;
@@ -104,7 +145,9 @@ class GameState extends ChangeNotifier {
     margin = null;
     resignedBy = null;
     botThinking = false;
+    _botDeadline = null;
     _botRng = difficulty == BotDifficulty.hard ? Random(20261009) : Random();
+    _narrate('${nameFor(1)} (Black) to play');
 
     // handicap stones (RULES §2, test 12): placed by black, komi 0.5,
     // black to move after placement.
@@ -115,6 +158,7 @@ class GameState extends ChangeNotifier {
       hashes = [GoEngine.hash(board)];
       seenHashes = {hashes.first};
       turn = 1;
+      _narrate('$handicap handicap stones placed — ${nameFor(1)} to play');
     }
     sound.playStart();
     notifyListeners();
@@ -143,6 +187,7 @@ class GameState extends ChangeNotifier {
     if (!canUndo) return;
     _gen++;
     botThinking = false;
+    _botDeadline = null;
     if (mode == GameMode.twoPlayer) {
       // one full round = both players' last moves (RULES §12)
       for (var k = 0; k < 2 && _undos.isNotEmpty; k++) {
@@ -156,6 +201,8 @@ class GameState extends ChangeNotifier {
       }
     }
     invalidAt = -1;
+    turnPhase = TurnPhase.awaitingHuman;
+    _narrate('Move taken back — ${nameFor(turn)} to play');
     sound.playTap();
     notifyListeners();
     _persist();
@@ -220,9 +267,13 @@ class GameState extends ChangeNotifier {
     passes = 0;
     lastMove = i;
     invalidAt = -1;
+    final who = nameFor(turn);
+    final at = GoEngine.coordName(size, i);
     if (cap > 0) {
+      _narrate('$who plays $at — captures $cap stone${cap == 1 ? '' : 's'}');
       sound.playCapture();
     } else {
+      _narrate('$who plays $at');
       sound.playStone(turn == 1);
     }
     _advance();
@@ -238,17 +289,24 @@ class GameState extends ChangeNotifier {
     if (passes >= 2) {
       // scoring review (RULES §8): auto-guess dead groups, player confirms.
       phase = GamePhase.markDead;
+      turnPhase = TurnPhase.settling;
       dead = guessDead(board, size);
       _recount();
+      _narrate('Both players pass — tap dead groups, then count the score');
       notifyListeners();
       _persist();
       return;
     }
+    _narrate('${nameFor(turn)} passes');
     _advance();
   }
 
   void _advance() {
     turn = 3 - turn;
+    // The engine — never the UI — decides what the next turn phase is.
+    turnPhase = (mode == GameMode.vsBot && turn == botColor)
+        ? TurnPhase.botArmed
+        : TurnPhase.awaitingHuman;
     notifyListeners();
     _persist();
     _maybeBot();
@@ -256,6 +314,9 @@ class GameState extends ChangeNotifier {
 
   // ================= bot =================
 
+  /// Arms the bot on an engine-owned timer. Every bot turn is visible:
+  /// the tray narrates "thinking…", then the stone drops with animation
+  /// and a placed-stone sound. Never silently auto-plays.
   void _maybeBot() {
     if (over ||
         phase != GamePhase.play ||
@@ -264,12 +325,20 @@ class GameState extends ChangeNotifier {
       return;
     }
     botThinking = true;
+    turnPhase = TurnPhase.botArmed;
+    final botName = nameFor(botColor);
+    _narrate('$botName is thinking…');
     notifyListeners();
     final g = _gen;
-    Future.delayed(Duration(milliseconds: 600 + _botRng.nextInt(400)), () {
-      if (_gen != g || over || phase != GamePhase.play) return;
+    final delay = Duration(milliseconds: 600 + _botRng.nextInt(400));
+    _botDeadline = DateTime.now().add(delay).add(const Duration(seconds: 6));
+    Future.delayed(delay, () {
+      if (_disposed || _gen != g || over || phase != GamePhase.play) return;
       if (mode != GameMode.vsBot || turn != botColor) return;
       botThinking = false;
+      _botDeadline = null;
+      turnPhase = TurnPhase.botActing;
+      notifyListeners();
       final pick = GoBot.chooseMove(
           board: board,
           size: size,
@@ -288,12 +357,15 @@ class GameState extends ChangeNotifier {
         sound.playPass();
         if (passes >= 2) {
           phase = GamePhase.markDead;
+          turnPhase = TurnPhase.settling;
           dead = guessDead(board, size);
           _recount();
+          _narrate('Both players pass — tap dead groups, then count the score');
           notifyListeners();
           _persist();
           return;
         }
+        _narrate('$botName passes');
         _advance();
       } else {
         _doMove(pick);
@@ -301,10 +373,51 @@ class GameState extends ChangeNotifier {
     });
   }
 
+  /// Watchdog: recover any turn phase found without a live timer.
+  /// Stuck states are impossible by construction — this is the backstop.
+  void _watchdogTick() {
+    if (_disposed) return;
+    if (over || phase != GamePhase.play) {
+      if (phase == GamePhase.done && turnPhase != TurnPhase.settling) {
+        turnPhase = TurnPhase.settling;
+      }
+      return;
+    }
+    // Case 1: it is the bot's turn but nothing is scheduled/thinking.
+    if (mode == GameMode.vsBot &&
+        turn == botColor &&
+        !botThinking &&
+        turnPhase != TurnPhase.botArmed &&
+        turnPhase != TurnPhase.botActing) {
+      watchdogTrips++;
+      turnPhase = TurnPhase.botArmed;
+      _maybeBot();
+      notifyListeners();
+      return;
+    }
+    // Case 2: bot flagged thinking but its deadline expired long ago —
+    // the timer was lost; reset and re-arm.
+    if (botThinking &&
+        _botDeadline != null &&
+        DateTime.now().isAfter(_botDeadline!)) {
+      watchdogTrips++;
+      botThinking = false;
+      _botDeadline = null;
+      _maybeBot();
+      notifyListeners();
+    }
+  }
+
+  /// Test hook: run one watchdog tick synchronously.
+  @visibleForTesting
+  void debugWatchdogTick() => _watchdogTick();
+
   /// Cancels any scheduled bot move (used by pause).
   void cancelBot() {
     _gen++;
     botThinking = false;
+    _botDeadline = null;
+    if (phase == GamePhase.play) turnPhase = TurnPhase.awaitingHuman;
     notifyListeners();
   }
 
@@ -345,6 +458,7 @@ class GameState extends ChangeNotifier {
     if (s == null || phase != GamePhase.markDead) return;
     _gen++;
     phase = GamePhase.done;
+    turnPhase = TurnPhase.settling;
     over = true;
     if ((s.black - s.white).abs() < 1e-9) {
       winner = 0; // jigo — only possible with whole-number komi
@@ -362,10 +476,13 @@ class GameState extends ChangeNotifier {
         ? true // no single "player" — celebrate the game
         : winner == humanColor;
     if (winner == 0) {
+      _narrate('The game is a draw — jigo');
       sound.playTap();
     } else if (humanWon) {
+      _narrate('${nameFor(winner!)} wins the game');
       sound.playWin();
     } else {
+      _narrate('${nameFor(winner!)} wins the game');
       sound.playLose();
     }
     notifyListeners();
@@ -375,12 +492,15 @@ class GameState extends ChangeNotifier {
     if (over || phase == GamePhase.done) return;
     _gen++;
     botThinking = false;
+    _botDeadline = null;
     resignedBy = turn;
     winner = 3 - turn;
     margin = null;
     phase = GamePhase.done;
+    turnPhase = TurnPhase.settling;
     over = true;
     settings.clearSavedGame();
+    _narrate('${nameFor(resignedBy!)} resigns — ${nameFor(winner!)} wins');
     final humanLost =
         mode == GameMode.vsBot && winner != humanColor;
     if (humanLost) {
@@ -445,17 +565,34 @@ class GameState extends ChangeNotifier {
       margin = null;
       resignedBy = null;
       botThinking = false;
+      _botDeadline = null;
       invalidAt = -1;
       _botRng = difficulty == BotDifficulty.hard ? Random(20261009) : Random();
+      turnPhase = phase == GamePhase.play &&
+              mode == GameMode.vsBot &&
+              turn == botColor
+          ? TurnPhase.botArmed
+          : phase == GamePhase.play
+              ? TurnPhase.awaitingHuman
+              : TurnPhase.settling;
       if (phase == GamePhase.markDead) {
         dead = guessDead(board, size);
         _recount();
       }
+      _narrate('${nameFor(turn)} to play');
       notifyListeners();
       _maybeBot();
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _watchdog?.cancel();
+    _watchdog = null;
+    super.dispose();
   }
 }

@@ -7,8 +7,13 @@ import '../theme.dart';
 import '../widgets/goban.dart';
 import '../widgets/wood.dart';
 
-/// Game board screen: sticky HUD top (nameplates + capture bowls),
-/// 1:1 kaya goban, Pass / Undo / Resign discs at the bottom.
+/// Game board screen: per-side trays (nameplates + capture bowls + thinking
+/// narration), 1:1 goban in the active wood/stone styles, Pass / Undo /
+/// Resign discs at the bottom.
+///
+/// Bot turns are fully visible: the active side's tray narrates "thinking…"
+/// with animated dots, then the stone drops with animation + placed-stone
+/// sound. Nothing ever silently auto-plays.
 class GameScreen extends StatelessWidget {
   final GameState game;
   final GoSettings settings;
@@ -33,6 +38,8 @@ class GameScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    GoTheme.use(settings.activeTheme);
+    BoardLook.use(wood: settings.activeWood, stone: settings.activeStone);
     return ListenableBuilder(
       listenable: game,
       builder: (ctx, _) => Scaffold(
@@ -41,8 +48,8 @@ class GameScreen extends StatelessWidget {
           child: Column(
             children: [
               _topBar(ctx),
-              _nameplates(),
-              _statusLine(),
+              _trays(ctx),
+              _narrationLine(),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -105,9 +112,9 @@ class GameScreen extends StatelessWidget {
           shape: BoxShape.circle,
           color: GoTheme.clamshell,
           border: Border.all(color: GoTheme.carved),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-                color: GoTheme.woodShadow, blurRadius: 6, offset: Offset(0, 3)),
+                color: GoTheme.woodShadow, blurRadius: 6, offset: const Offset(0, 3)),
           ],
         ),
         child: Icon(icon, color: GoTheme.kayaDeep, size: 22),
@@ -115,27 +122,32 @@ class GameScreen extends StatelessWidget {
     );
   }
 
-  Widget _nameplates() {
+  /// Per-side trays: each player side owns its nameplate, capture bowl and
+  /// thinking narration. The active side highlights.
+  Widget _trays(BuildContext ctx) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Row(
         children: [
-          Expanded(child: _plate(1, game.capByBlack, 'captured')),
+          Expanded(child: _tray(ctx, 1, game.capByBlack)),
           const SizedBox(width: 10),
-          Expanded(child: _plate(2, game.capByWhite, 'captured')),
+          Expanded(child: _tray(ctx, 2, game.capByWhite)),
         ],
       ),
     );
   }
 
-  Widget _plate(int color, int captures, String caption) {
-    final active = game.turn == color &&
-        game.phase == GamePhase.play &&
-        !game.over;
-    final name = color == 1 ? 'Black' : 'White';
-    final who = game.mode == GameMode.vsBot
+  Widget _tray(BuildContext ctx, int color, int captures) {
+    final active =
+        game.turn == color && game.phase == GamePhase.play && !game.over;
+    final thinking = active &&
+        game.mode == GameMode.vsBot &&
+        game.botThinking &&
+        game.turn == game.botColor;
+    final name = game.nameFor(color);
+    final role = game.mode == GameMode.vsBot
         ? (color == game.botColor ? 'bot' : 'you')
-        : (color == 1 ? 'player 1' : 'player 2');
+        : (color == 1 ? 'black' : 'white');
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -147,10 +159,10 @@ class GameScreen extends StatelessWidget {
             width: active ? 2 : 1.2),
         boxShadow: [
           if (active)
-            const BoxShadow(
+            BoxShadow(
                 color: GoTheme.woodShadow,
                 blurRadius: 10,
-                offset: Offset(0, 4)),
+                offset: const Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -161,9 +173,26 @@ class GameScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
-                    style: GoTheme.body(14, weight: FontWeight.w600)),
-                Text(who, style: GoTheme.label(11)),
+                GestureDetector(
+                  onTap: () => _renameDialog(ctx, color, name),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(name,
+                            style: GoTheme.body(14,
+                                weight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                      const SizedBox(width: 3),
+                      Icon(Icons.edit_outlined,
+                          size: 12, color: GoTheme.inkGrey),
+                    ],
+                  ),
+                ),
+                thinking
+                    ? _ThinkingDots(color: color)
+                    : Text(role, style: GoTheme.label(11)),
               ],
             ),
           ),
@@ -171,7 +200,7 @@ class GameScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('$captures', style: GoTheme.counter(17)),
-              Text(caption, style: GoTheme.label(10)),
+              Text('captured', style: GoTheme.label(10)),
             ],
           ),
         ],
@@ -179,24 +208,101 @@ class GameScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusLine() {
+  void _renameDialog(BuildContext ctx, int color, String current) {
+    final ctrl = TextEditingController(text: current);
+    sound.playTap();
+    showDialog(
+      context: ctx,
+      builder: (d) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: WoodCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Rename player', style: GoTheme.display(18)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: GoTheme.tatami,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: GoTheme.carved),
+                ),
+                child: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  style: GoTheme.body(15),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  maxLength: 16,
+                  buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
+                      const SizedBox.shrink(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(d).pop(),
+                    child: Text('Cancel',
+                        style: GoTheme.label(14, color: GoTheme.inkGrey)),
+                  ),
+                  const SizedBox(width: 6),
+                  WoodButton(
+                    label: 'Save',
+                    fontSize: 14,
+                    onTap: () {
+                      final v = ctrl.text.trim();
+                      if (v.isNotEmpty) {
+                        sound.playTap();
+                        settings.update(() {
+                          if (game.mode == GameMode.vsBot) {
+                            if (color == game.botColor) {
+                              settings.botName = v;
+                            } else {
+                              settings.humanName = v;
+                            }
+                          } else {
+                            if (color == 1) {
+                              settings.p1Name = v;
+                            } else {
+                              settings.p2Name = v;
+                            }
+                          }
+                        });
+                      }
+                      Navigator.of(d).pop();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Narration line: the engine's own account of the game ("Kishi plays D4",
+  /// "Kishi is thinking…"). Never empty during play.
+  Widget _narrationLine() {
     String text;
     if (reviewMode) {
       text = game.scoreLine;
     } else if (game.phase == GamePhase.markDead) {
       text = 'tap stone groups to toggle them dead, then count the score';
-    } else if (game.botThinking) {
-      text = '${game.turn == 1 ? 'Black' : 'White'} is thinking…';
-    } else if (game.phase == GamePhase.play) {
-      final who = game.mode == GameMode.vsBot && game.turn == game.botColor
-          ? 'bot'
-          : 'your';
-      text =
-          'move ${game.moves + 1} · ${game.turn == 1 ? 'black' : 'white'} to play'
-          '${game.mode == GameMode.vsBot ? ' ($who move)' : ''}'
-          '${game.passes == 1 ? ' · one pass' : ''}';
     } else {
-      text = '';
+      text = game.narration.isEmpty
+          ? 'move ${game.moves + 1} · ${game.turn == 1 ? 'black' : 'white'} to play'
+          : game.narration;
+      if (game.passes == 1 && game.phase == GamePhase.play) {
+        text += ' · one pass so far';
+      }
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -352,6 +458,46 @@ class GameScreen extends StatelessWidget {
   }
 }
 
+/// Animated "thinking…" dots on the active bot's tray.
+class _ThinkingDots extends StatefulWidget {
+  final int color;
+  const _ThinkingDots({required this.color});
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, _) {
+        final n = (_c.value * 3).floor() + 1;
+        return Text('thinking${'.' * n}',
+            style: GoTheme.label(11, color: GoTheme.kayaDeep));
+      },
+    );
+  }
+}
+
 /// Small wooden dialog used for pause / pass / resign confirmations.
 class _WoodDialog extends StatelessWidget {
   final String title;
@@ -373,21 +519,17 @@ class _WoodDialog extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(title,
-                    style: GoTheme.display(20)),
+                Text(title, style: GoTheme.display(20)),
                 if (kanji != null) ...[
                   const SizedBox(width: 8),
-                  Text(kanji!,
-                      style: GoTheme.body(15,
-                          color: GoTheme.inkGrey)),
+                  Text(kanji!, style: GoTheme.body(15, color: GoTheme.inkGrey)),
                 ],
               ],
             ),
             const SizedBox(height: 8),
             Text(body,
                 textAlign: TextAlign.center,
-                style: GoTheme.body(14,
-                    color: GoTheme.inkGrey)),
+                style: GoTheme.body(14, color: GoTheme.inkGrey)),
             const SizedBox(height: 18),
             for (final (label, primary, fn) in actions) ...[
               WoodButton(

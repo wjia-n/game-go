@@ -178,18 +178,19 @@ class _GobanPainter extends CustomPainter {
 
   void _paintWood(Canvas canvas, Size s) {
     final rect = Offset.zero & s;
-    // kaya honey base, faint vertical sheen (light from upper-left)
+    final wood = BoardLook.wood;
+    // board wood base, faint vertical sheen (light from upper-left)
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(14)),
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFD9A85E), Color(0xFFC88A3F), Color(0xFFB2762F)],
-          stops: [0.0, 0.55, 1.0],
+          colors: [wood.light, wood.mid, wood.deep],
+          stops: const [0.0, 0.55, 1.0],
         ).createShader(rect),
     );
-    // straight kaya grain — deterministic so it never shimmers
+    // straight wood grain — deterministic so it never shimmers
     final rnd = Random(20261009);
     final grain = Paint()
       ..style = PaintingStyle.stroke
@@ -201,7 +202,8 @@ class _GobanPainter extends CustomPainter {
       for (var y = 0.0; y <= s.height; y += 24) {
         path.lineTo(x + sin(y / 90 + k) * wob, y);
       }
-      grain.color = const Color(0xFF8A5410).withValues(alpha: 0.05 + rnd.nextDouble() * 0.05);
+      grain.color = wood.grain.withValues(
+          alpha: (wood.grain.a * (0.5 + rnd.nextDouble() * 0.8)).clamp(0.02, 0.25));
       canvas.drawPath(path, grain);
     }
     // rim
@@ -210,7 +212,7 @@ class _GobanPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 5
-        ..color = GoTheme.boardEdge.withValues(alpha: 0.85),
+        ..color = wood.rim,
     );
     // soft ambient occlusion inside the rim
     canvas.drawRRect(
@@ -223,15 +225,16 @@ class _GobanPainter extends CustomPainter {
   }
 
   void _paintGrid(Canvas canvas, _Metrics m, Offset Function(int) pt) {
+    final wood = BoardLook.wood;
     final grid = Paint()
-      ..color = const Color(0xFF4A2F0E).withValues(alpha: 0.85)
+      ..color = wood.grid
       ..strokeWidth = (m.cell * 0.035).clamp(1.0, 2.2);
     for (var k = 0; k < size; k++) {
       final p = m.pad + k * m.cell;
       canvas.drawLine(Offset(m.pad, p), Offset(m.edge, p), grid);
       canvas.drawLine(Offset(p, m.pad), Offset(p, m.edge), grid);
     }
-    final star = Paint()..color = const Color(0xFF4A2F0E);
+    final star = Paint()..color = wood.grid;
     for (final sp in GoEngine.starPoints(size)) {
       canvas.drawCircle(
           pt(sp[0] * size + sp[1]), (m.cell * 0.085).clamp(1.8, 4.5), star);
@@ -292,16 +295,17 @@ class _GobanPainter extends CustomPainter {
       );
 
       final rect = Rect.fromCircle(center: p, radius: rr);
+      final stone = BoardLook.stone;
       if (v == 1) {
-        // slate black: near-black, soft top-left specular
+        // black stone: physical material per the active stone style
         canvas.drawCircle(
             p,
             rr,
             Paint()
-              ..shader = const RadialGradient(
-                center: Alignment(-0.35, -0.4),
+              ..shader = RadialGradient(
+                center: const Alignment(-0.35, -0.4),
                 radius: 1.1,
-                colors: [GoTheme.slateTop, GoTheme.slateDeep],
+                colors: [stone.blackTop, stone.blackDeep],
               ).createShader(rect)
               ..color = Colors.white.withValues(alpha: isDead ? 0.35 : 1.0));
         // specular glint
@@ -311,24 +315,28 @@ class _GobanPainter extends CustomPainter {
                 width: rr * 0.55,
                 height: rr * 0.38),
             Paint()
-              ..color = Colors.white.withValues(alpha: isDead ? 0.06 : 0.16));
+              ..color = (isDead
+                      ? stone.blackGlint.withValues(alpha: 0.06)
+                      : stone.blackGlint));
       } else {
-        // clamshell white: milky, marbled banding, warm rim translucency
+        // white stone: physical material per the active stone style
         canvas.drawCircle(
             p,
             rr,
             Paint()
-              ..shader = const RadialGradient(
-                center: Alignment(-0.3, -0.35),
+              ..shader = RadialGradient(
+                center: const Alignment(-0.3, -0.35),
                 radius: 1.15,
-                colors: [Colors.white, Color(0xFFEDE6D4), Color(0xFFDCD2BC)],
+                colors: [stone.whiteTop, stone.whiteMid, stone.whiteDeep],
               ).createShader(rect)
               ..color = Colors.white.withValues(alpha: isDead ? 0.35 : 1.0));
         // marbled bands
         final band = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = rr * 0.06
-          ..color = const Color(0xFFB8A888).withValues(alpha: isDead ? 0.05 : 0.14);
+          ..color = isDead
+              ? stone.whiteBand.withValues(alpha: 0.05)
+              : stone.whiteBand;
         canvas.drawArc(rect.deflate(rr * 0.35), 0.4, 1.8, false, band);
         canvas.drawArc(rect.deflate(rr * 0.6), 3.4, 1.4, false, band);
         // warm rim
@@ -338,7 +346,9 @@ class _GobanPainter extends CustomPainter {
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = rr * 0.10
-              ..color = const Color(0xFFF0C87E).withValues(alpha: isDead ? 0.08 : 0.22));
+              ..color = isDead
+                  ? stone.whiteRim.withValues(alpha: 0.08)
+                  : stone.whiteRim);
       }
 
       if (isDead) {

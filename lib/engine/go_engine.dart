@@ -141,6 +141,14 @@ class GoEngine {
   }
 
   static String hash(List<int> b) => b.join();
+
+  static const _cols = 'ABCDEFGHJKLMNOPQRST';
+
+  /// Human-readable coordinate, e.g. "D4" (columns skip I, rows count down).
+  static String coordName(int size, int i) {
+    final r = i ~/ size, c = i % size;
+    return '${_cols[c]}${size - r}';
+  }
 }
 
 /// Outcome of testing a candidate move without committing it.
@@ -149,6 +157,17 @@ class MoveCheck {
   final int captures;
   final String reason; // 'occupied' | 'suicide' | 'ko' | 'ok'
   const MoveCheck(this.ok, this.captures, this.reason);
+}
+
+/// Engine-owned turn sub-state. The session ([GameState]) owns this — never
+/// UI timers. A watchdog re-arms any bot phase found without a live timer,
+/// so stuck states are impossible by construction.
+enum TurnPhase {
+  idle, // no game running / between games
+  awaitingHuman, // a human must act — always has a legal forward action
+  botArmed, // bot's turn scheduled on an engine timer
+  botActing, // bot is computing its move right now
+  settling, // scoring review or game over
 }
 
 /// Full legality test: occupied, suicide, and positional superko.

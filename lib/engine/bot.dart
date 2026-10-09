@@ -49,27 +49,47 @@ class GoBot {
   // --- Easy: random-ish, biased to captures, atari rescues, near stones, stars.
   static int _easy(List<int> board, int size, int color, int moves,
       List<_Cand> legal, Random rng) {
-    var best = -1e9, pick = legal[0].i;
+    var best = -1e9, bestTactical = 0.0, pick = legal[0].i;
     for (final c in legal) {
-      var s = _baseScore(board, size, color, moves, c) + rng.nextDouble() * 14;
+      final tactical = _tacticalValue(board, size, color, c);
+      final s = _baseScore(board, size, color, moves, c) + rng.nextDouble() * 14;
       if (s > best) {
         best = s;
+        bestTactical = tactical;
         pick = c.i;
       }
     }
-    // Drift into a graceful endgame.
-    if (best < 1.5 && moves > size * size * 0.5) return -1;
+    // Drift into a graceful endgame: when nothing tactically useful remains
+    // (no captures, no atari rescues) and the board is mostly full, pass.
+    // NOTE: the pass test must use the noise-free tactical value — using the
+    // noisy `best` made endgames drag on for hundreds of extra plies.
+    if (bestTactical < 1.0 && moves > size * size * 0.5) return -1;
     return pick;
+  }
+
+  /// Noise-free tactical value of a candidate: captures + atari rescues.
+  /// Used for endgame pass decisions at every difficulty.
+  static double _tacticalValue(
+      List<int> board, int size, int color, _Cand c) {
+    var s = c.captures * 14.0;
+    for (final n in GoEngine.nbrs(size, c.i)) {
+      if (board[n] == color) {
+        final g = GoEngine.group(board, size, n);
+        if (GoEngine.libs(board, size, g) == 1) s += g.length * 9.0;
+      }
+    }
+    return s;
   }
 
   // --- Medium: easy + liberty discipline, opening shape, no own-territory fill.
   static int _medium(List<int> board, int size, int color, int moves,
       List<_Cand> legal, Random rng) {
-    var best = -1e9, pick = legal[0].i;
+    var best = -1e9, bestTactical = 0.0, pick = legal[0].i;
     for (final c in legal) {
       final b = List<int>.from(board);
       GoEngine.playOn(b, size, c.i, color);
       var s = _baseScore(board, size, color, moves, c);
+      final tactical = _tacticalValue(board, size, color, c);
       // avoid self-atari: don't leave own new group with 1 liberty
       final g = GoEngine.group(b, size, c.i);
       final l = GoEngine.libs(b, size, g);
@@ -91,10 +111,11 @@ class GoBot {
       s += rng.nextDouble() * 4;
       if (s > best) {
         best = s;
+        bestTactical = tactical;
         pick = c.i;
       }
     }
-    if (best < 1.0 && moves > size * size * 0.5) return -1;
+    if (bestTactical < 1.0 && moves > size * size * 0.5) return -1;
     return pick;
   }
 

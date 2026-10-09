@@ -1,43 +1,60 @@
 import 'package:flutter/material.dart';
 
-/// Stitch "Kishi" design tokens for Go — Japanese minimalism.
-/// Tatami room: kaya wood, slate & clamshell stones, soft shoji daylight.
+import 'theme/go_themes.dart';
+
+export 'theme/go_themes.dart';
+
+/// Static theme facade — same API as before, now forwarding to the active
+/// [GoThemeDef]. Screens call [GoTheme.use] at the top of build (main.dart
+/// also applies it whenever settings change), so every widget re-skins
+/// without call-site changes.
+///
+/// NOTE: token getters are NOT const. Do not use GoTheme colors inside
+/// `const` expressions.
 abstract final class GoTheme {
-  // --- palette -------------------------------------------------------------
-  static const tatami = Color(0xFFF5EFEB); // screen background, washi grain
-  static const clamshell = Color(0xFFF9F8F5); // white stones, cards, pill
-  static const kayaHoney = Color(0xFFC88A3F); // primary accent, wood highlights
-  static const kayaDeep = Color(0xFF865307); // primary actions, carved dividers
-  static const sumi = Color(0xFF33302E); // primary text, headlines
-  static const inkGrey = Color(0xFF5C554E); // secondary text, placeholders
-  static const slateTop = Color(0xFF3A3735); // black stone highlight side
-  static const slateDeep = Color(0xFF1A1A1A); // black stone deep side
-  static const carved = Color(0xFFEBE1D7); // card perimeters
-  static const error = Color(0xFFBA1A1A); // illegal-move flash only
-  static const boardEdge = Color(0xFFA5712E); // goban rim
+  static GoThemeDef _current = GoThemes.classic;
 
-  static const stoneShadow = Color(0x59000000); // rgba(0,0,0,0.35)
-  static const woodShadow = Color(0x2E8C531B); // rgba(140,83,27,~0.18)
+  /// Activate a theme for all subsequent static reads.
+  static void use(GoThemeDef t) {
+    _current = t;
+  }
 
-  // --- typography ------------------------------------------------------------
-  // Noto Serif ships on Android; elsewhere Flutter falls back gracefully.
+  static GoThemeDef get current => _current;
+
+  // --- palette (forwarded) --------------------------------------------------
+  static Color get tatami => _current.tatami;
+  static Color get clamshell => _current.clamshell;
+  static Color get kayaHoney => _current.kayaHoney;
+  static Color get kayaDeep => _current.kayaDeep;
+  static Color get sumi => _current.sumi;
+  static Color get inkGrey => _current.inkGrey;
+  static Color get slateTop => _current.slateTop;
+  static Color get slateDeep => _current.slateDeep;
+  static Color get carved => _current.carved;
+  static Color get error => _current.error;
+  static Color get boardEdge => _current.boardEdge;
+  static Color get stoneShadow => _current.stoneShadow;
+  static Color get woodShadow => _current.woodShadow;
+
+  // --- typography (forwarded) ------------------------------------------------
   static const serif = 'Noto Serif';
   static const sans = 'Work Sans';
 
-  static TextStyle display(double size, {FontWeight weight = FontWeight.w600}) =>
-      TextStyle(fontFamily: serif, fontSize: size, fontWeight: weight, color: sumi, height: 1.25);
+  static TextStyle display(double size,
+          {FontWeight weight = FontWeight.w600}) =>
+      _current.display(size, weight: weight);
 
-  static TextStyle body(double size, {Color color = sumi, FontWeight weight = FontWeight.w400}) =>
-      TextStyle(fontFamily: serif, fontSize: size, fontWeight: weight, color: color, height: 1.5);
+  static TextStyle body(double size,
+          {Color? color, FontWeight weight = FontWeight.w400}) =>
+      _current.body(size, color: color, weight: weight);
 
-  static TextStyle counter(double size, {Color color = sumi}) => TextStyle(
-      fontFamily: sans, fontSize: size, fontWeight: FontWeight.w500, color: color,
-      fontFeatures: const [FontFeature.tabularFigures()], height: 1.2);
+  static TextStyle counter(double size, {Color? color}) =>
+      _current.counter(size, color: color);
 
-  static TextStyle label(double size, {Color color = inkGrey}) =>
-      TextStyle(fontFamily: sans, fontSize: size, fontWeight: FontWeight.w500, color: color, height: 1.3);
+  static TextStyle label(double size, {Color? color}) =>
+      _current.label(size, color: color);
 
-  // --- layout ----------------------------------------------------------------
+  // --- layout (true consts, not theme-dependent) ------------------------------
   static const radius = Radius.circular(18);
   static const cardRadius = BorderRadius.all(Radius.circular(18));
   static const double touch = 44.0; // minimum touch target

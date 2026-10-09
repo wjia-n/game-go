@@ -5,23 +5,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../engine/bot.dart';
 import '../engine/go_engine.dart';
+import '../theme/go_themes.dart';
 
 /// Persisted user settings + mid-game save. Backed by shared_preferences.
 class GoSettings extends ChangeNotifier {
   static const _p = 'go_';
 
+  // --- audio ---
   bool musicOn = true;
   bool sfxOn = true;
   double musicVolume = 0.6;
   double sfxVolume = 0.8;
 
+  // --- rules ---
   double komi = 6.5; // per-board default applied at game start
   int handicap = 0; // 0 = none, else 2..9
   bool showCoordinates = false;
   bool confirmPass = true;
 
+  // --- bot ---
   BotDifficulty botDifficulty = BotDifficulty.medium;
   int botColor = 1; // 1 = bot plays black (convention), 2 = white
+
+  // --- player names (every slot renameable, persisted) ---
+  String humanName = 'You';
+  String botName = 'Kishi';
+  String p1Name = 'Player 1';
+  String p2Name = 'Player 2';
+
+  // --- look & feel ---
+  String themeId = 'kaya';
+  String stoneId = 'slate';
+  String woodId = 'kaya';
+  CustomThemeDef? customTheme;
+
+  // --- pro ---
+  bool isPro = false;
+
+  GoThemeDef get activeTheme => GoThemes.byId(themeId, custom: customTheme);
+  WoodStyle get activeWood => Woods.byId(woodId);
+  StoneStyle get activeStone => StoneStyles.byId(stoneId);
 
   Future<void> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -35,6 +58,35 @@ class GoSettings extends ChangeNotifier {
     confirmPass = sp.getBool('${_p}confirmPass') ?? true;
     botDifficulty = BotDifficulty.values[sp.getInt('${_p}botDifficulty') ?? 1];
     botColor = sp.getInt('${_p}botColor') ?? 1;
+    humanName = sp.getString('${_p}humanName') ?? 'You';
+    botName = sp.getString('${_p}botName') ?? 'Kishi';
+    p1Name = sp.getString('${_p}p1Name') ?? 'Player 1';
+    p2Name = sp.getString('${_p}p2Name') ?? 'Player 2';
+    themeId = sp.getString('${_p}themeId') ?? 'kaya';
+    stoneId = sp.getString('${_p}stoneId') ?? 'slate';
+    woodId = sp.getString('${_p}woodId') ?? 'kaya';
+    customTheme = CustomThemeDef.decode(sp.getString('${_p}customTheme'));
+    isPro = sp.getBool('${_p}isPro') ?? false;
+    _ensureProEntitlements();
+    notifyListeners();
+  }
+
+  /// Free tier keeps only free content; Pro unlocks everything.
+  /// Never strands the user on a Pro-only selection after expiry/reset.
+  void _ensureProEntitlements() {
+    if (isPro) return;
+    if (botDifficulty == BotDifficulty.hard) {
+      botDifficulty = BotDifficulty.medium;
+    }
+    if (GoThemes.isPro(themeId)) themeId = 'kaya';
+    if (StoneStyles.byId(stoneId).isPro) stoneId = 'slate';
+    if (Woods.byId(woodId).isPro) woodId = 'kaya';
+  }
+
+  Future<void> setPro(bool v) async {
+    isPro = v;
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool('${_p}isPro', v);
     notifyListeners();
   }
 
@@ -50,10 +102,24 @@ class GoSettings extends ChangeNotifier {
     await sp.setBool('${_p}confirmPass', confirmPass);
     await sp.setInt('${_p}botDifficulty', botDifficulty.index);
     await sp.setInt('${_p}botColor', botColor);
+    await sp.setString('${_p}humanName', humanName);
+    await sp.setString('${_p}botName', botName);
+    await sp.setString('${_p}p1Name', p1Name);
+    await sp.setString('${_p}p2Name', p2Name);
+    await sp.setString('${_p}themeId', themeId);
+    await sp.setString('${_p}stoneId', stoneId);
+    await sp.setString('${_p}woodId', woodId);
+    final c = customTheme;
+    if (c == null) {
+      await sp.remove('${_p}customTheme');
+    } else {
+      await sp.setString('${_p}customTheme', c.encode());
+    }
   }
 
   void update(void Function() f) {
     f();
+    _ensureProEntitlements();
     _save();
     notifyListeners();
   }

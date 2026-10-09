@@ -26,18 +26,20 @@ class GameOverScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    GoTheme.use(game.settings.activeTheme);
+    BoardLook.use(
+        wood: game.settings.activeWood, stone: game.settings.activeStone);
     final s = game.pendingScore;
     final w = game.winner;
     final headline = w == 0
         ? 'Draw — jigo'
-        : w == 1
-            ? 'Black wins'
-            : 'White wins';
+        : '${game.nameFor(w!)} wins';
     final sub = game.resignedBy != null
-        ? '${game.resignedBy == 1 ? 'White' : 'Black'} resigned'
+        ? '${game.nameFor(3 - game.resignedBy!)} resigned'
         : w == 0
             ? 'an exact tie'
             : 'by ${game.margin!.toStringAsFixed(1)} points';
+    final colorLine = w == 0 ? '' : w == 1 ? 'black' : 'white';
 
     // breakdown: stones on board (dead removed) + territory
     var bStones = 0, wStones = 0, bTerr = 0, wTerr = 0;
@@ -71,6 +73,9 @@ class GameOverScreen extends StatelessWidget {
                   Text(sub,
                       style: GoTheme.body(15,
                           color: GoTheme.inkGrey)),
+                  if (colorLine.isNotEmpty)
+                    Text('playing $colorLine',
+                        style: GoTheme.label(12)),
                 ],
               ),
             ),
@@ -100,10 +105,10 @@ class GameOverScreen extends StatelessWidget {
                 children: [
                   const SectionHead(title: 'Score', kanji: '得点'),
                   const SizedBox(height: 10),
-                  _row('Black', bStones, bTerr, 0,
+                  _row(game.nameFor(1), 'black', bStones, bTerr, 0,
                       (s?.black ?? 0).toStringAsFixed(1), true),
-                  const Divider(color: GoTheme.carved, height: 18),
-                  _row('White', wStones, wTerr, game.komi,
+                  Divider(color: GoTheme.carved, height: 18),
+                  _row(game.nameFor(2), 'white', wStones, wTerr, game.komi,
                       (s?.white ?? 0).toStringAsFixed(1), false),
                   const SizedBox(height: 6),
                   Text('stones + territory${game.komi > 0 ? ' + komi' : ''} · area scoring',
@@ -146,8 +151,8 @@ class GameOverScreen extends StatelessWidget {
     );
   }
 
-  Widget _row(String who, int stones, int terr, double komi, String total,
-      bool black) {
+  Widget _row(String who, String colorName, int stones, int terr, double komi,
+      String total, bool black) {
     return Row(
       children: [
         MiniStone(black: black, size: 24),
@@ -160,7 +165,7 @@ class GameOverScreen extends StatelessWidget {
                   style:
                       GoTheme.body(15, weight: FontWeight.w600)),
               Text(
-                  '$stones stones · $terr territory'
+                  '$colorName · $stones stones · $terr territory'
                   '${komi > 0 ? ' · komi ${komi.toStringAsFixed(1)}' : ''}',
                   style: GoTheme.label(12)),
             ],

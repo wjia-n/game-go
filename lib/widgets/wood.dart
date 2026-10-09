@@ -63,18 +63,18 @@ class _WoodButtonState extends State<WoodButton> {
                   width: 1.2),
               boxShadow: _down
                   ? [
-                      const BoxShadow(
+                      BoxShadow(
                           color: Colors.black26,
                           blurRadius: 2,
                           offset: Offset(0, 1),
                           spreadRadius: -1),
                     ]
                   : [
-                      const BoxShadow(
+                      BoxShadow(
                           color: GoTheme.woodShadow,
                           blurRadius: 10,
                           offset: Offset(0, 5)),
-                      const BoxShadow(
+                      BoxShadow(
                           color: Colors.white70,
                           blurRadius: 1,
                           offset: Offset(0, 1),
@@ -130,7 +130,7 @@ class WoodDisc extends StatelessWidget {
                       : [GoTheme.kayaHoney, GoTheme.kayaDeep],
                 ),
                 border: Border.all(color: GoTheme.kayaDeep, width: 1.4),
-                boxShadow: const [
+                boxShadow: [
                   BoxShadow(
                       color: GoTheme.woodShadow,
                       blurRadius: 8,
@@ -165,7 +165,7 @@ class WoodCard extends StatelessWidget {
         color: GoTheme.clamshell,
         borderRadius: GoTheme.cardRadius,
         border: Border.all(color: GoTheme.carved, width: 1.2),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
               color: GoTheme.woodShadow, blurRadius: 14, offset: Offset(0, 6)),
         ],
@@ -220,7 +220,7 @@ class WoodSegmented<T> extends StatelessWidget {
         color: const Color(0xFFEDE4D4),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: GoTheme.carved),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
               color: Colors.black12,
               blurRadius: 2,
@@ -241,13 +241,13 @@ class WoodSegmented<T> extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
                     gradient: values[i] == current
-                        ? const LinearGradient(
+                        ? LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [GoTheme.kayaHoney, GoTheme.kayaDeep])
                         : null,
                     boxShadow: values[i] == current
-                        ? const [
+                        ? [
                             BoxShadow(
                                 color: GoTheme.woodShadow,
                                 blurRadius: 6,
@@ -288,7 +288,7 @@ class WoodToggle extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: value ? GoTheme.kayaDeep : const Color(0xFFD9CDBB),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
                 color: Colors.black26,
                 blurRadius: 2,
@@ -398,7 +398,7 @@ class WoodStepper extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: GoTheme.clamshell,
                 border: Border.all(color: GoTheme.kayaDeep, width: 1.2),
-                boxShadow: const [
+                boxShadow: [
                   BoxShadow(
                       color: GoTheme.woodShadow,
                       blurRadius: 6,
@@ -445,7 +445,7 @@ class MiniStone extends StatelessWidget {
               ? [GoTheme.slateTop, GoTheme.slateDeep]
               : [Colors.white, const Color(0xFFE4DCCB)],
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
               color: GoTheme.stoneShadow, blurRadius: 3, offset: Offset(0, 2)),
         ],

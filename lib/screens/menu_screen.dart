@@ -5,10 +5,12 @@ import '../engine/bot.dart';
 import '../state/game.dart';
 import '../state/settings.dart';
 import '../theme.dart';
+import '../widgets/look_picker.dart';
+import '../widgets/name_field.dart';
 import '../widgets/wood.dart';
 
-/// Main menu: title block → board-size cards → mode cards → settings gear →
-/// big round wooden Play button. Portrait, serene negative space.
+/// Main menu: logo + title → board-size → mode → names → difficulty →
+/// theme/stone/wood pickers → big wooden Play button. Portrait, serene.
 class MenuScreen extends StatefulWidget {
   final GoSettings settings;
   final SoundService sound;
@@ -17,6 +19,8 @@ class MenuScreen extends StatefulWidget {
   final VoidCallback onPlay;
   final VoidCallback onResume;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenPro;
+  final VoidCallback onOpenCustomTheme;
 
   const MenuScreen({
     super.key,
@@ -27,6 +31,8 @@ class MenuScreen extends StatefulWidget {
     required this.onPlay,
     required this.onResume,
     required this.onOpenSettings,
+    required this.onOpenPro,
+    required this.onOpenCustomTheme,
   });
 
   @override
@@ -37,27 +43,29 @@ class _MenuScreenState extends State<MenuScreen> {
   int _size = 9;
   GameMode _mode = GameMode.vsBot;
 
-  @override
-  void initState() {
-    super.initState();
-    widget.sound.setMusicMode('menu');
-  }
+  GoSettings get st => widget.settings;
 
   void _start() {
     widget.sound.playStart();
     widget.game.newGame(
       boardSize: _size,
       gameMode: _mode,
-      botDifficulty: widget.settings.botDifficulty,
-      botPlays: widget.settings.botColor,
-      handicapStones: _mode == GameMode.twoPlayer ? widget.settings.handicap : 0,
+      botDifficulty: st.botDifficulty,
+      botPlays: st.botColor,
+      handicapStones: _mode == GameMode.twoPlayer ? st.handicap : 0,
     );
     widget.onPlay();
   }
 
+  void _pickLocked() {
+    widget.sound.playTap();
+    widget.onOpenPro();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final st = widget.settings;
+    GoTheme.use(st.activeTheme);
+    BoardLook.use(wood: st.activeWood, stone: st.activeStone);
     return Scaffold(
       backgroundColor: GoTheme.tatami,
       body: SafeArea(
@@ -79,6 +87,9 @@ class _MenuScreenState extends State<MenuScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    if (!st.isPro)
+                      _proChip(),
+                    const SizedBox(width: 8),
                     _iconBtn(Icons.settings_outlined, () {
                       widget.sound.playTap();
                       widget.onOpenSettings();
@@ -86,31 +97,40 @@ class _MenuScreenState extends State<MenuScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                // title block
+                // title block with the game logo
                 Center(
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          MiniStone(black: true, size: 30),
-                          SizedBox(width: 10),
-                          MiniStone(black: false, size: 30),
-                        ],
+                      Container(
+                        width: 110,
+                        height: 110,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(26),
+                          border:
+                              Border.all(color: GoTheme.kayaDeep, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: GoTheme.woodShadow,
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset('assets/go_logo.png',
+                            fit: BoxFit.cover),
                       ),
                       const SizedBox(height: 10),
-                      Text('Go', style: GoTheme.display(52)),
+                      Text('Go', style: GoTheme.display(48)),
                       Text('囲碁',
-                          style: GoTheme.body(18,
-                              color: GoTheme.inkGrey)),
-                      const SizedBox(height: 4),
+                          style: GoTheme.body(17, color: GoTheme.inkGrey)),
+                      const SizedBox(height: 2),
                       Text('the ancient game of territory',
-                          style: GoTheme.body(14,
-                              color: GoTheme.inkGrey)),
+                          style: GoTheme.body(13, color: GoTheme.inkGrey)),
                     ],
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 20),
                 if (widget.hasSave) ...[
                   WoodButton(
                       label: 'Resume last game',
@@ -157,20 +177,25 @@ class _MenuScreenState extends State<MenuScreen> {
                     setState(() => _mode = v);
                   },
                 ),
+                const SizedBox(height: 12),
                 if (_mode == GameMode.vsBot) ...[
-                  const SizedBox(height: 12),
+                  NameField(
+                      label: 'Your name',
+                      value: st.humanName,
+                      onInteract: () => widget.sound.playTap(),
+                      onCommit: (v) =>
+                          st.update(() => st.humanName = v)),
+                  const SizedBox(height: 8),
+                  NameField(
+                      label: 'Bot name',
+                      value: st.botName,
+                      onInteract: () => widget.sound.playTap(),
+                      onCommit: (v) => st.update(() => st.botName = v)),
+                  const SizedBox(height: 14),
                   const SectionHead(title: 'Bot strength', kanji: '強さ'),
                   const SizedBox(height: 8),
-                  WoodSegmented<BotDifficulty>(
-                    values: BotDifficulty.values,
-                    labels: const ['Easy', 'Medium', 'Hard'],
-                    current: st.botDifficulty,
-                    onChanged: (v) {
-                      widget.sound.playTap();
-                      st.update(() => st.botDifficulty = v);
-                    },
-                  ),
-                  const SizedBox(height: 12),
+                  _difficultyRow(),
+                  const SizedBox(height: 14),
                   const SectionHead(title: 'Bot plays', kanji: '手合'),
                   const SizedBox(height: 8),
                   WoodSegmented<int>(
@@ -183,7 +208,18 @@ class _MenuScreenState extends State<MenuScreen> {
                     },
                   ),
                 ] else ...[
-                  const SizedBox(height: 12),
+                  NameField(
+                      label: 'Black · player 1',
+                      value: st.p1Name,
+                      onInteract: () => widget.sound.playTap(),
+                      onCommit: (v) => st.update(() => st.p1Name = v)),
+                  const SizedBox(height: 8),
+                  NameField(
+                      label: 'White · player 2',
+                      value: st.p2Name,
+                      onInteract: () => widget.sound.playTap(),
+                      onCommit: (v) => st.update(() => st.p2Name = v)),
+                  const SizedBox(height: 14),
                   const SectionHead(title: 'Handicap stones', kanji: '置石'),
                   const SizedBox(height: 8),
                   Row(
@@ -206,6 +242,82 @@ class _MenuScreenState extends State<MenuScreen> {
                     ],
                   ),
                 ],
+                const SizedBox(height: 20),
+                LookPicker(
+                  title: 'Theme',
+                  kanji: '色',
+                  options: [
+                    for (final t in GoThemes.all)
+                      LookOption(
+                          id: t.id,
+                          name: t.name,
+                          preview: t.kayaDeep,
+                          locked: t.isPro && !st.isPro),
+                    if (st.customTheme != null || st.isPro)
+                      LookOption(
+                          id: 'custom',
+                          name: 'My Theme',
+                          preview: st.customTheme?.accent ??
+                              GoTheme.kayaDeep,
+                          locked: !st.isPro),
+                  ],
+                  current: st.themeId,
+                  onPick: (id) {
+                    if (id == 'custom' && st.customTheme == null) {
+                      widget.onOpenCustomTheme();
+                      return;
+                    }
+                    widget.sound.playTap();
+                    st.update(() => st.themeId = id);
+                  },
+                  onUnlock: _pickLocked,
+                  trailing: TextButton(
+                    onPressed: () {
+                      widget.sound.playTap();
+                      widget.onOpenCustomTheme();
+                    },
+                    child: Text('customize',
+                        style: GoTheme.label(12, color: GoTheme.kayaDeep)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LookPicker(
+                  title: 'Stones',
+                  kanji: '石',
+                  options: [
+                    for (final s in StoneStyles.all)
+                      LookOption(
+                          id: s.id,
+                          name: s.name,
+                          preview: s.blackDeep,
+                          locked: s.isPro && !st.isPro),
+                  ],
+                  current: st.stoneId,
+                  onPick: (id) {
+                    widget.sound.playTap();
+                    st.update(() => st.stoneId = id);
+                  },
+                  onUnlock: _pickLocked,
+                ),
+                const SizedBox(height: 14),
+                LookPicker(
+                  title: 'Board wood',
+                  kanji: '木',
+                  options: [
+                    for (final w in Woods.all)
+                      LookOption(
+                          id: w.id,
+                          name: w.name,
+                          preview: w.mid,
+                          locked: w.isPro && !st.isPro),
+                  ],
+                  current: st.woodId,
+                  onPick: (id) {
+                    widget.sound.playTap();
+                    st.update(() => st.woodId = id);
+                  },
+                  onUnlock: _pickLocked,
+                ),
                 const SizedBox(height: 26),
                 // the big round wooden Play button
                 Center(
@@ -216,26 +328,26 @@ class _MenuScreenState extends State<MenuScreen> {
                       height: 120,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [GoTheme.kayaHoney, GoTheme.kayaDeep],
                         ),
-                        border: Border.all(
-                            color: GoTheme.kayaDeep, width: 2),
-                        boxShadow: const [
+                        border:
+                            Border.all(color: GoTheme.kayaDeep, width: 2),
+                        boxShadow: [
                           BoxShadow(
                               color: GoTheme.woodShadow,
                               blurRadius: 18,
-                              offset: Offset(0, 9)),
+                              offset: const Offset(0, 9)),
                           BoxShadow(
-                              color: Colors.white70,
+                              color: Colors.white.withValues(alpha: 0.45),
                               blurRadius: 2,
-                              offset: Offset(0, 2),
+                              offset: const Offset(0, 2),
                               spreadRadius: -2),
                         ],
                       ),
-                      child: const Icon(Icons.play_arrow_rounded,
+                      child: Icon(Icons.play_arrow_rounded,
                           size: 56, color: GoTheme.clamshell),
                     ),
                   ),
@@ -243,10 +355,95 @@ class _MenuScreenState extends State<MenuScreen> {
                 const SizedBox(height: 8),
                 Center(
                     child: Text('begin',
-                        style: GoTheme.body(14,
-                            color: GoTheme.inkGrey))),
+                        style:
+                            GoTheme.body(14, color: GoTheme.inkGrey))),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _proChip() {
+    return GestureDetector(
+      onTap: () {
+        widget.sound.playTap();
+        widget.onOpenPro();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: LinearGradient(
+              colors: [GoTheme.kayaHoney, GoTheme.kayaDeep]),
+          boxShadow: [
+            BoxShadow(
+                color: GoTheme.woodShadow,
+                blurRadius: 8,
+                offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Text('✦ GO PRO',
+            style: GoTheme.label(13, color: GoTheme.clamshell)),
+      ),
+    );
+  }
+
+  Widget _difficultyRow() {
+    return Row(
+      children: [
+        for (var i = 0; i < BotDifficulty.values.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: _difficultyChip(BotDifficulty.values[i])),
+        ],
+      ],
+    );
+  }
+
+  Widget _difficultyChip(BotDifficulty d) {
+    final locked = d == BotDifficulty.hard && !st.isPro;
+    final selected = st.botDifficulty == d;
+    final label =
+        d == BotDifficulty.easy ? 'Easy' : d == BotDifficulty.medium ? 'Medium' : 'Hard';
+    return GestureDetector(
+      onTap: () {
+        widget.sound.playTap();
+        if (locked) {
+          widget.onOpenPro();
+          return;
+        }
+        st.update(() => st.botDifficulty = d);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: selected
+              ? LinearGradient(colors: [GoTheme.kayaHoney, GoTheme.kayaDeep])
+              : null,
+          color: selected ? null : GoTheme.clamshell,
+          border: Border.all(
+              color: selected ? GoTheme.kayaDeep : GoTheme.carved,
+              width: selected ? 1.6 : 1.2),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (locked)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(Icons.lock_outline_rounded,
+                    size: 14,
+                    color: selected ? GoTheme.clamshell : GoTheme.inkGrey),
+              ),
+            Text(label,
+                style: GoTheme.label(13,
+                    color: selected
+                        ? GoTheme.clamshell
+                        : GoTheme.sumi)),
           ],
         ),
       ),
@@ -263,11 +460,11 @@ class _MenuScreenState extends State<MenuScreen> {
           shape: BoxShape.circle,
           color: GoTheme.clamshell,
           border: Border.all(color: GoTheme.carved),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
                 color: GoTheme.woodShadow,
                 blurRadius: 6,
-                offset: Offset(0, 3)),
+                offset: const Offset(0, 3)),
           ],
         ),
         child: Icon(icon, color: GoTheme.kayaDeep, size: 22),

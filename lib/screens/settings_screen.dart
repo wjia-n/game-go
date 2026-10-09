@@ -4,22 +4,25 @@ import '../audio/sound.dart';
 import '../engine/bot.dart';
 import '../state/settings.dart';
 import '../theme.dart';
+import '../widgets/name_field.dart';
 import '../widgets/wood.dart';
 
-/// Settings — 設定: stacked light-wood cards for audio, game rules and bot.
+/// Settings — 設定: sound, rules, bot, and player names.
 class SettingsScreen extends StatelessWidget {
   final GoSettings settings;
   final SoundService sound;
   final VoidCallback onBack;
+  final VoidCallback onOpenPro;
 
   const SettingsScreen(
       {super.key,
       required this.settings,
       required this.sound,
-      required this.onBack});
+      required this.onBack,
+      required this.onOpenPro});
 
   void _audio(GoSettings st) {
-    sound.applySettings(
+    sound.configure(
         sfxOn: st.sfxOn,
         musicOn: st.musicOn,
         sfxVolume: st.sfxVolume,
@@ -28,6 +31,7 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    GoTheme.use(settings.activeTheme);
     final st = settings;
     return ListenableBuilder(
       listenable: st,
@@ -52,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
                         color: GoTheme.clamshell,
                         border: Border.all(color: GoTheme.carved),
                       ),
-                      child: const Icon(Icons.arrow_back_rounded,
+                      child: Icon(Icons.arrow_back_rounded,
                           color: GoTheme.kayaDeep),
                     ),
                   ),
@@ -60,8 +64,29 @@ class SettingsScreen extends StatelessWidget {
                   Text('Settings', style: GoTheme.display(26)),
                   const SizedBox(width: 8),
                   Text('設定',
-                      style: GoTheme.body(15,
-                          color: GoTheme.inkGrey)),
+                      style: GoTheme.body(15, color: GoTheme.inkGrey)),
+                  const Spacer(),
+                  if (!st.isPro)
+                    GestureDetector(
+                      onTap: () {
+                        sound.playTap();
+                        onOpenPro();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          gradient: LinearGradient(colors: [
+                            GoTheme.kayaHoney,
+                            GoTheme.kayaDeep
+                          ]),
+                        ),
+                        child: Text('✦ GO PRO',
+                            style: GoTheme.label(13,
+                                color: GoTheme.clamshell)),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -77,7 +102,7 @@ class SettingsScreen extends StatelessWidget {
                       st.update(() => st.musicOn = v);
                       _audio(st);
                     }),
-                    const Divider(color: GoTheme.carved, height: 20),
+                    Divider(color: GoTheme.carved, height: 20),
                     _toggleRow('Sound effects', 'stone clicks & chimes',
                         st.sfxOn, (v) {
                       st.update(() => st.sfxOn = v);
@@ -85,22 +110,58 @@ class SettingsScreen extends StatelessWidget {
                       sound.playTap();
                     }),
                     const SizedBox(height: 8),
-                    Text('Music volume',
-                        style: GoTheme.label(13)),
+                    Text('Music volume', style: GoTheme.label(13)),
                     WoodSlider(
                         value: st.musicVolume,
                         onChanged: (v) {
                           st.update(() => st.musicVolume = v);
                           _audio(st);
                         }),
-                    Text('Effects volume',
-                        style: GoTheme.label(13)),
+                    Text('Effects volume', style: GoTheme.label(13)),
                     WoodSlider(
                         value: st.sfxVolume,
                         onChanged: (v) {
                           st.update(() => st.sfxVolume = v);
                           _audio(st);
                         }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              WoodCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SectionHead(title: 'Players', kanji: '名前'),
+                    const SizedBox(height: 12),
+                    NameField(
+                        label: 'Your name (vs bot)',
+                        value: st.humanName,
+                        fill: GoTheme.tatami,
+                        onInteract: () => sound.playTap(),
+                        onCommit: (v) =>
+                            st.update(() => st.humanName = v)),
+                    const SizedBox(height: 8),
+                    NameField(
+                        label: 'Bot name',
+                        value: st.botName,
+                        fill: GoTheme.tatami,
+                        onInteract: () => sound.playTap(),
+                        onCommit: (v) => st.update(() => st.botName = v)),
+                    const SizedBox(height: 8),
+                    NameField(
+                        label: 'Player 1 (2P)',
+                        value: st.p1Name,
+                        fill: GoTheme.tatami,
+                        onInteract: () => sound.playTap(),
+                        onCommit: (v) => st.update(() => st.p1Name = v)),
+                    const SizedBox(height: 8),
+                    NameField(
+                        label: 'Player 2 (2P)',
+                        value: st.p2Name,
+                        fill: GoTheme.tatami,
+                        onInteract: () => sound.playTap(),
+                        onCommit: (v) => st.update(() => st.p2Name = v)),
                   ],
                 ),
               ),
@@ -142,7 +203,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     Text('half-point steps · whole numbers allow draws',
                         style: GoTheme.label(11)),
-                    const Divider(color: GoTheme.carved, height: 20),
+                    Divider(color: GoTheme.carved, height: 20),
                     Row(
                       children: [
                         Expanded(
@@ -160,13 +221,13 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     Text('two-player only · sets komi to 0.5',
                         style: GoTheme.label(11)),
-                    const Divider(color: GoTheme.carved, height: 20),
+                    Divider(color: GoTheme.carved, height: 20),
                     _toggleRow('Board coordinates', 'A–T · 1–19 labels',
                         st.showCoordinates, (v) {
                       sound.playTap();
                       st.update(() => st.showCoordinates = v);
                     }),
-                    const Divider(color: GoTheme.carved, height: 20),
+                    Divider(color: GoTheme.carved, height: 20),
                     _toggleRow('Confirm before pass', 'avoids slips',
                         st.confirmPass, (v) {
                       sound.playTap();
@@ -184,14 +245,17 @@ class SettingsScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text('Strength', style: GoTheme.label(13)),
                     const SizedBox(height: 6),
-                    WoodSegmented<BotDifficulty>(
-                      values: BotDifficulty.values,
-                      labels: const ['Easy', 'Medium', 'Hard'],
-                      current: st.botDifficulty,
-                      onChanged: (v) {
-                        sound.playTap();
-                        st.update(() => st.botDifficulty = v);
-                      },
+                    Row(
+                      children: [
+                        for (var i = 0;
+                            i < BotDifficulty.values.length;
+                            i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          Expanded(
+                              child: _difficultyChip(
+                                  BotDifficulty.values[i])),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 12),
                     Text('Bot plays', style: GoTheme.label(13)),
@@ -218,6 +282,59 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Widget _difficultyChip(BotDifficulty d) {
+    final st = settings;
+    final locked = d == BotDifficulty.hard && !st.isPro;
+    final selected = st.botDifficulty == d;
+    final label = d == BotDifficulty.easy
+        ? 'Easy'
+        : d == BotDifficulty.medium
+            ? 'Medium'
+            : 'Hard';
+    return GestureDetector(
+      onTap: () {
+        sound.playTap();
+        if (locked) {
+          onOpenPro();
+          return;
+        }
+        st.update(() => st.botDifficulty = d);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: selected
+              ? LinearGradient(
+                  colors: [GoTheme.kayaHoney, GoTheme.kayaDeep])
+              : null,
+          color: selected ? null : GoTheme.clamshell,
+          border: Border.all(
+              color: selected ? GoTheme.kayaDeep : GoTheme.carved,
+              width: selected ? 1.6 : 1.2),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (locked)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(Icons.lock_outline_rounded,
+                    size: 14,
+                    color:
+                        selected ? GoTheme.clamshell : GoTheme.inkGrey),
+              ),
+            Text(label,
+                style: GoTheme.label(13,
+                    color:
+                        selected ? GoTheme.clamshell : GoTheme.sumi)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _toggleRow(
       String title, String sub, bool value, ValueChanged<bool> onChanged) {
     return Row(
@@ -227,8 +344,7 @@ class SettingsScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style:
-                      GoTheme.body(14, weight: FontWeight.w600)),
+                  style: GoTheme.body(14, weight: FontWeight.w600)),
               Text(sub, style: GoTheme.label(11)),
             ],
           ),
