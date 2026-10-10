@@ -40,7 +40,7 @@ class GoSettings extends ChangeNotifier {
   CustomThemeDef? customTheme;
 
   // --- pro ---
-  bool isPro = false;
+  bool isPro = true;
 
   GoThemeDef get activeTheme => GoThemes.byId(themeId, custom: customTheme);
   WoodStyle get activeWood => Woods.byId(woodId);

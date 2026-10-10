@@ -13,10 +13,9 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 /// service exposes [storeReady] = false and the UI shows an honest
 /// "available after store setup" state — never a fake buy button.
 class StoreService {
-  static const proId = 'gopro';
   static const coffeeId = 'gocoffee';
   static const chocolateId = 'gochocolate';
-  static const productIds = {proId, coffeeId, chocolateId};
+  static const productIds = {coffeeId, chocolateId};
 
   final InAppPurchase _iap = InAppPurchase.instance;
 
