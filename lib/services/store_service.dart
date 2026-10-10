@@ -148,5 +148,4 @@ class StoreService {
 
   // Compatibility stubs — Pro is auto-unlocked, these are no-ops.
   ProductDetails? get proProduct => null;
-  Future<void> buyPro() async {}
 }
