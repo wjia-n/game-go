@@ -32,7 +32,6 @@ class StoreService {
   final ValueNotifier<bool> purchaseInProgress = ValueNotifier(false);
   final ValueNotifier<String?> purchaseError = ValueNotifier(null);
 
-  ProductDetails? get proProduct => _byId(proId);
   ProductDetails? get coffeeProduct => _byId(coffeeId);
   ProductDetails? get chocolateProduct => _byId(chocolateId);
 
@@ -80,10 +79,7 @@ class StoreService {
     for (final p in list) {
       if (p.status == PurchaseStatus.purchased ||
           p.status == PurchaseStatus.restored) {
-        if (p.productID == proId) {
-          proPurchased.value = true;
-          lastThanks.value = 'Welcome to Go PRO!';
-        } else if (p.productID == chocolateId) {
+        if (p.productID == chocolateId) {
           lastThanks.value = 'Thank you for the chocolate!';
         } else if (p.productID == coffeeId) {
           lastThanks.value = 'Thank you for the tea!';
@@ -149,4 +145,8 @@ class StoreService {
     purchaseInProgress.dispose();
     purchaseError.dispose();
   }
+
+  // Compatibility stubs — Pro is auto-unlocked, these are no-ops.
+  ProductDetails? get proProduct => null;
+  Future<void> buyPro() async {}
 }
